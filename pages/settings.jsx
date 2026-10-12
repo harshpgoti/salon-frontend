@@ -1,0 +1,208 @@
+import { useCallback, useEffect, useState } from "react";
+import Head from "next/head";
+import { useRouter } from "next/router";
+
+const panel = { background: "#ffffff", border: "1px solid #e8e6df", borderRadius: 14, padding: 20, marginBottom: 18 };
+const muted = { color: "#747970", fontSize: 13 };
+const input = { display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, padding: 10, border: "1px solid #c9c6bd", borderRadius: 7 };
+const button = { padding: "10px 16px", background: "#334b39", color: "#fff", border: 0, borderRadius: 8, cursor: "pointer" };
+const STEP_LABEL = {
+  business_identity: "Business identity", location: "Location, time zone and currency",
+  hours: "Opening hours", service: "Services", qualified_staff: "Qualified staff",
+  public_link: "Publish booking link", communication_setup: "Communication setup", import: "Import existing data",
+};
+const STATE_LABEL = { complete: "Done", pending: "To do" };
+
+function errorText(payload, fallback) {
+  const detail = payload?.detail;
+  if (typeof detail === "string") return detail;
+  if (detail?.code) return detail.code.replace(/_/g, " ");
+  return fallback;
+}
+
+// Like the team page, the tenant id here only selects which salon to load. Every
+// authorization decision is made by the API from the session cookie.
+export default function Settings() {
+  const router = useRouter();
+  const [tenantId, setTenantId] = useState("");
+  const [steps, setSteps] = useState([]);
+  const [readiness, setReadiness] = useState(null);
+  const [settings, setSettings] = useState({});
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const url = useCallback(
+    (resource, params = {}) => `/api/settings?${new URLSearchParams({ tenant_id: tenantId, resource, ...params })}`,
+    [tenantId],
+  );
+
+  const load = useCallback(async () => {
+    if (!tenantId) return;
+    setBusy(true); setError("");
+    try {
+      const [setupRes, settingsRes] = await Promise.all([
+        fetch(url("setup"), { credentials: "include" }),
+        fetch(url("settings"), { credentials: "include" }),
+      ]);
+      if (!setupRes.ok) {
+        setError(errorText(await setupRes.json().catch(() => null), "Setup progress could not be loaded."));
+        return;
+      }
+      const setup = await setupRes.json();
+      setSteps(setup.steps || []);
+      setReadiness({ accepting: setup.accepting_bookings, missing: setup.missing_setup || [] });
+      if (settingsRes.ok) {
+        const body = await settingsRes.json();
+        setSettings(body.settings || {});
+        setVersion(body.settings_version || 0);
+        setSettingsLoaded(true);
+      } else {
+        // Keep the branding form disabled. An emptied box now means "clear this", so
+        // saving against a failed load would erase every stored value.
+        setSettingsLoaded(false);
+        setError(errorText(await settingsRes.json().catch(() => null), "Salon settings could not be loaded."));
+      }
+    } catch {
+      setError("The settings service is unavailable.");
+    } finally { setBusy(false); }
+  }, [tenantId, url]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Onboarding links here with the tenant it just created.
+    if (router.isReady && router.query.tenant) setTenantId(String(router.query.tenant));
+  }, [router.isReady, router.query.tenant]);
+
+  async function save(path, body, okMessage, onDone) {
+    setBusy(true); setError(""); setStatus("");
+    try {
+      const response = await fetch(url(...path), {
+        method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(errorText(payload, "That change could not be saved."));
+      if (onDone) onDone(payload);
+      setStatus(okMessage);
+      await load();
+    } catch (err) {
+      setError(err.message || "That change could not be saved.");
+    } finally { setBusy(false); }
+  }
+
+  const markStep = (step, state) =>
+    save(["setup", { step }], { state }, `${STEP_LABEL[step] || step} marked as done.`);
+  const saveBranding = (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    // An emptied field is sent as an explicit null so the API clears it. Sending
+    // `undefined` instead would drop the key, and the owner would be told their change
+    // saved while the old value stayed.
+    const field = (name) => {
+      const value = form.get(name);
+      return value === null || value === "" ? null : value;
+    };
+    save(["settings"], {
+      brand_name: field("brand_name"),
+      primary_colour: field("primary_colour"),
+      accent_colour: field("accent_colour"),
+      cancellation_policy: field("cancellation_policy"),
+      notification_language: field("notification_language"),
+    }, "Salon settings saved.");
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ef", color: "#20231f", fontFamily: "Inter, system-ui, sans-serif" }}>
+      <Head><title>Setup &amp; branding · Salon Operations</title></Head>
+      <main style={{ padding: "38px 5vw", maxWidth: 1080, margin: "0 auto" }}>
+        <header style={{ marginBottom: 24 }}>
+          <div style={muted}>Guided setup</div>
+          <h1 style={{ margin: "6px 0", fontSize: 30 }}>Finish setting up your salon</h1>
+          <p style={muted}>Work through the list, then publish your booking link. Your progress is saved as you go.</p>
+        </header>
+
+        <section style={panel}>
+          <label style={{ display: "block", maxWidth: 420 }}>
+            Tenant workspace
+            <input style={input} value={tenantId} onChange={(e) => setTenantId(e.target.value.trim())}
+              placeholder="Salon workspace UUID" aria-describedby="tenant-help" />
+          </label>
+          <small id="tenant-help" style={{ ...muted, display: "block", marginTop: 8 }}>
+            Your session decides what you can see. This id only selects which salon the page loads.
+          </small>
+        </section>
+
+        {error && <p role="alert" style={{ ...panel, color: "#8c2626" }}>{error}</p>}
+        <p role="status" aria-live="polite" style={{ ...panel, color: "#2c3f31", display: status ? "block" : "none" }}>{status}</p>
+
+        {!tenantId ? <p style={muted}>Enter your workspace id to continue setup.</p> : (
+          <>
+            <section style={panel}>
+              <h2 style={{ fontSize: 17, margin: "0 0 6px" }}>Setup checklist</h2>
+              <p style={{ ...muted, marginTop: 0 }}>
+                {readiness?.accepting
+                  ? "Your booking page is open and accepting bookings."
+                  : `Your booking page is not accepting bookings yet. Still to do: ${(readiness?.missing || []).map((s) => STEP_LABEL[s] || s).join(", ")}.`}
+              </p>
+              <ol style={{ margin: "14px 0 0", paddingLeft: 20, display: "grid", gap: 8 }}>
+                {steps.map((item) => (
+                  <li key={item.step} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <span>{STEP_LABEL[item.step] || item.step}</span>
+                    {item.state === "complete"
+                      ? <span style={{ color: "#2c6b3f" }}>{STATE_LABEL[item.state]}</span>
+                      : item.stored
+                        ? <button type="button" style={button} disabled={busy} onClick={() => markStep(item.step, "complete")}>
+                            {busy ? "Working…" : "Mark as done"}
+                          </button>
+                        : <span style={muted}>Added automatically when set up</span>}
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            <section style={panel}>
+              <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Branding and preferences</h2>
+              <p style={{ ...muted, marginTop: 0 }}>
+                Shown on your public booking page. Version {version} — saved changes always advance it.
+                {!settingsLoaded && " Reconnect before editing: saving now would clear the stored values."}
+              </p>
+              <form onSubmit={saveBranding} style={{ display: "grid", gap: 14, marginTop: 14 }}>
+                <label style={{ maxWidth: 420 }}>Public brand name
+                  <input style={input} name="brand_name" maxLength={120} disabled={!settingsLoaded}
+                    defaultValue={settings.brand_name || ""} placeholder="Maple & Co" />
+                </label>
+                <label style={{ maxWidth: 260 }}>Primary colour
+                  <input style={input} name="primary_colour" maxLength={7} pattern="#[0-9a-fA-F]{6}"
+                    disabled={!settingsLoaded} defaultValue={settings.primary_colour || ""} placeholder="#334b39" />
+                </label>
+                <label style={{ maxWidth: 260 }}>Accent colour
+                  <input style={input} name="accent_colour" maxLength={7} pattern="#[0-9a-fA-F]{6}"
+                    disabled={!settingsLoaded} defaultValue={settings.accent_colour || ""} placeholder="#8c2626" />
+                </label>
+                <label style={{ maxWidth: 260 }}>Notification language
+                  <select style={input} name="notification_language" disabled={!settingsLoaded}
+                    defaultValue={settings.notification_language || ""}>
+                    <option value="">Not chosen</option>
+                    <option value="en-CA">English (Canada)</option>
+                    <option value="fr-CA">Français (Canada)</option>
+                  </select>
+                </label>
+                <label style={{ maxWidth: 620 }}>Cancellation terms
+                  <textarea style={{ ...input, minHeight: 84 }} name="cancellation_policy" maxLength={2000}
+                    disabled={!settingsLoaded} defaultValue={settings.cancellation_policy || ""}
+                    placeholder="Free cancellation up to 24 hours before the appointment." />
+                </label>
+                <div><button type="submit" style={button} disabled={busy || !settingsLoaded}>{busy ? "Saving…" : "Save settings"}</button></div>
+              </form>
+            </section>
+
+            <p><a href="/team">Manage your team →</a></p>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}

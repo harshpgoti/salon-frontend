@@ -1,0 +1,16 @@
+{
+  "/": "pages/index.html",
+  "/_app": "pages/_app.js",
+  "/_document": "pages/_document.js",
+  "/_error": "pages/_error.js",
+  "/api/clients": "pages/api/clients.js",
+  "/api/onboarding": "pages/api/onboarding.js",
+  "/api/settings": "pages/api/settings.js",
+  "/api/team": "pages/api/team.js",
+  "/clients": "pages/clients.html",
+  "/login": "pages/login.html",
+  "/onboarding": "pages/onboarding.html",
+  "/settings": "pages/settings.html",
+  "/team": "pages/team.html",
+  "/404": "pages/404.html"
+}
