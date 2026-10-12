@@ -20,6 +20,79 @@ function errorText(payload, fallback) {
   return fallback;
 }
 
+// Support access (TASK-051): the salon sees every grant request on its workspace,
+// approves thirty minutes of masked diagnostics or declines, and reviews each use.
+function SupportAccess({ tenantId }) {
+  const [grants, setGrants] = useState([]);
+  const [uses, setUses] = useState([]);
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
+  const [working, setWorking] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const res = await fetch(`/api/support?${new URLSearchParams({ tenant_id: tenantId })}`,
+        { credentials: "include" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "Support requests could not be loaded."));
+      setGrants(body.grants || []);
+      setUses(body.uses || []);
+    } catch (err) {
+      setProblem(err.message || "Support requests could not be loaded.");
+    }
+  }, [tenantId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const decide = (grantId, action) => async () => {
+    setWorking(true); setProblem(""); setNote("");
+    try {
+      const res = await fetch(`/api/support?${new URLSearchParams({ tenant_id: tenantId, grant_id: grantId, action })}`,
+        { method: "POST", credentials: "include" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "That decision could not be saved."));
+      setNote(action === "approve"
+        ? "Approved: thirty minutes of masked diagnostics from now."
+        : "Declined: no access granted.");
+      await load();
+    } catch (err) {
+      setProblem(err.message || "That decision could not be saved.");
+    } finally { setWorking(false); }
+  };
+
+  const pending = grants.filter((grant) => grant.status === "requested");
+
+  return (
+    <section style={panel}>
+      <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Support access</h2>
+      <p style={{ ...muted, marginTop: 0 }}>
+        Support sees masked diagnostics only, only with your approval, for thirty minutes at a time.
+      </p>
+      {problem && <p role="alert" style={{ color: "#8c2626" }}>{problem}</p>}
+      {note && <p role="status" style={{ color: "#2c3f31" }}>{note}</p>}
+      {pending.length === 0
+        ? <p style={muted}>No pending requests.</p>
+        : (
+          <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 10 }}>
+            {pending.map((grant) => (
+              <li key={grant.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <span><strong>{grant.scope}</strong> access — {grant.justification}</span>
+                <span style={{ display: "flex", gap: 8 }}>
+                  <button type="button" style={button} disabled={working} onClick={decide(grant.id, "approve")}>Approve 30 min</button>
+                  <button type="button" style={{ ...button, background: "#8c2626" }} disabled={working} onClick={decide(grant.id, "reject")}>Decline</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      {uses.length > 0 && (
+        <p style={muted}>Recent access: {uses.length} logged read(s), latest {uses[0].action}.</p>
+      )}
+    </section>
+  );
+}
+
 // Salon billing (TASK-046): plan, trial state, hosted checkout and invoices. The page
 // only displays what the API reports; plan changes activate through provider webhooks,
 // never from this browser.
@@ -434,6 +507,8 @@ export default function Settings() {
             </section>
 
             <SmsSenders tenantId={tenantId} />
+
+            <SupportAccess tenantId={tenantId} />
 
             <Billing tenantId={tenantId} />
 
