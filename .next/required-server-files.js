@@ -104,7 +104,7 @@ self.__SERVER_FILES_MANIFEST={
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "H:\\salon",
+    "outputFileTracingRoot": "H:\\salon\\frontend",
     "cacheComponents": false,
     "cacheLife": {
       "default": {
@@ -305,12 +305,12 @@ self.__SERVER_FILES_MANIFEST={
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.js",
     "turbopack": {
-      "root": "H:\\salon"
+      "root": "H:\\salon\\frontend"
     },
     "distDirRoot": ".next"
   },
-  "appDir": "H:\\salon\\apps\\web",
-  "relativeAppDir": "apps\\web",
+  "appDir": "H:\\salon\\frontend",
+  "relativeAppDir": "",
   "files": [
     ".next\\routes-manifest.json",
     ".next\\server\\pages-manifest.json",

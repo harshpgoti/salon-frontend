@@ -1,10 +1,10 @@
 globalThis.__BUILD_MANIFEST = {
   "pages": {
     "/": [
-      "static/chunks/0p-q.06~ywvkj.js",
+      "static/chunks/09g0afh5l5bk7.js",
       "static/chunks/0m5moi4za1hig.js",
       "static/chunks/0bsvv_fui3ykw.js",
-      "static/chunks/turbopack-0tg2f__~tz9vq.js"
+      "static/chunks/turbopack-0eh488yfl1zos.js"
     ],
     "/_app": [
       "static/chunks/0j6xifcvh5byb.js",
@@ -19,42 +19,42 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/turbopack-0r2l8l3~~yb22.js"
     ],
     "/clients": [
-      "static/chunks/171p0ojirryc..js",
+      "static/chunks/0jr45ewpghirb.js",
       "static/chunks/0m5moi4za1hig.js",
       "static/chunks/0bsvv_fui3ykw.js",
-      "static/chunks/turbopack-0js5jikf3k1hr.js"
+      "static/chunks/turbopack-0e7m799ars8cy.js"
     ],
     "/login": [
-      "static/chunks/14fzp90lm3_k7.js",
+      "static/chunks/0vpxafqww2v40.js",
       "static/chunks/0m5moi4za1hig.js",
       "static/chunks/0bsvv_fui3ykw.js",
-      "static/chunks/turbopack-0wund4_l8-oci.js"
+      "static/chunks/turbopack-00z56zvmjcht6.js"
     ],
     "/onboarding": [
-      "static/chunks/095bxltrz~b9v.js",
+      "static/chunks/0_d889swws_ew.js",
       "static/chunks/0m5moi4za1hig.js",
       "static/chunks/0bsvv_fui3ykw.js",
-      "static/chunks/turbopack-0urwkojzjm9rw.js"
+      "static/chunks/turbopack-0g7hssnfwnd-k.js"
     ],
     "/settings": [
-      "static/chunks/0k8n9o7~1pf3u.js",
+      "static/chunks/0vte.46en3h99.js",
       "static/chunks/0m5moi4za1hig.js",
       "static/chunks/0bsvv_fui3ykw.js",
-      "static/chunks/turbopack-0qeavkwkdgb~j.js"
+      "static/chunks/turbopack-032~mwvi6q5ez.js"
     ],
     "/team": [
-      "static/chunks/11fiqd-qf5e39.js",
+      "static/chunks/0gg1oc25x2h83.js",
       "static/chunks/0m5moi4za1hig.js",
       "static/chunks/0bsvv_fui3ykw.js",
-      "static/chunks/turbopack-0zc2k93u~ge-d.js"
+      "static/chunks/turbopack-0b-51krk-mamp.js"
     ]
   },
   "devFiles": [],
   "polyfillFiles": [],
   "lowPriorityFiles": [
-    "static/A5zB9fWV7m6njeWz-ZPfC/_buildManifest.js",
-    "static/A5zB9fWV7m6njeWz-ZPfC/_ssgManifest.js",
-    "static/A5zB9fWV7m6njeWz-ZPfC/_clientMiddlewareManifest.js"
+    "static/DpB5NvHmWti2AgJP0fHfV/_buildManifest.js",
+    "static/DpB5NvHmWti2AgJP0fHfV/_ssgManifest.js",
+    "static/DpB5NvHmWti2AgJP0fHfV/_clientMiddlewareManifest.js"
   ],
   "rootMainFiles": []
 };
