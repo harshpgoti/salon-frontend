@@ -20,6 +20,86 @@ function errorText(payload, fallback) {
   return fallback;
 }
 
+// Quiet hours and limits (TASK-032): due sends inside the window wait for its end,
+// over-cap sends wait a day, and the emergency stop holds everything visibly.
+function QuietSettings({ tenantId }) {
+  const [settings, setSettings] = useState({ quiet_start: "", quiet_end: "", emergency_stop: false, max_per_recipient_per_day: "" });
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
+  const [working, setWorking] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const res = await fetch(`/api/messaging?${new URLSearchParams({ tenant_id: tenantId })}`,
+        { credentials: "include" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "Messaging settings could not be loaded."));
+      setSettings({ quiet_start: body.quiet_start || "", quiet_end: body.quiet_end || "",
+        emergency_stop: !!body.emergency_stop,
+        max_per_recipient_per_day: body.max_per_recipient_per_day ?? "" });
+    } catch (err) {
+      setProblem(err.message || "Messaging settings could not be loaded.");
+    }
+  }, [tenantId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const text = (name) => {
+      const value = String(form.get(name) || "").trim();
+      return value === "" ? null : value;
+    };
+    const cap = text("max_per_recipient_per_day");
+    setWorking(true); setProblem(""); setNote("");
+    fetch(`/api/messaging?${new URLSearchParams({ tenant_id: tenantId })}`,
+      { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quiet_start: text("quiet_start"), quiet_end: text("quiet_end"),
+          emergency_stop: form.get("emergency_stop") === "on",
+          max_per_recipient_per_day: cap === null ? null : Number(cap) }) })
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(errorText(body, "Messaging settings could not be saved."));
+        setNote("Messaging settings saved.");
+        await load();
+      })
+      .catch((err) => setProblem(err.message || "Messaging settings could not be saved."))
+      .finally(() => setWorking(false));
+  };
+
+  return (
+    <section style={panel}>
+      <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Quiet hours and limits</h2>
+      <p style={{ ...muted, marginTop: 0 }}>
+        Empty window means no quiet enforcement. Sends inside the window wait; the stop holds everything.
+      </p>
+      {problem && <p role="alert" style={{ color: "#8c2626" }}>{problem}</p>}
+      {note && <p role="status" style={{ color: "#2c3f31" }}>{note}</p>}
+      <form onSubmit={save} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label>Quiet start
+          <input style={{ ...input, maxWidth: 120 }} name="quiet_start" placeholder="21:00"
+            pattern="([01][0-9]|2[0-3]):[0-5][0-9]" defaultValue={settings.quiet_start} />
+        </label>
+        <label>Quiet end
+          <input style={{ ...input, maxWidth: 120 }} name="quiet_end" placeholder="08:00"
+            pattern="([01][0-9]|2[0-3]):[0-5][0-9]" defaultValue={settings.quiet_end} />
+        </label>
+        <label>Daily cap per client
+          <input style={{ ...input, maxWidth: 120 }} name="max_per_recipient_per_day" inputMode="numeric"
+            pattern="[0-9]*" defaultValue={settings.max_per_recipient_per_day} placeholder="none" />
+        </label>
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="checkbox" name="emergency_stop" defaultChecked={settings.emergency_stop} />
+          Emergency stop
+        </label>
+        <button type="submit" style={button} disabled={working}>Save</button>
+      </form>
+    </section>
+  );
+}
+
 // Support access (TASK-051): the salon sees every grant request on its workspace,
 // approves thirty minutes of masked diagnostics or declines, and reviews each use.
 function SupportAccess({ tenantId }) {
@@ -507,6 +587,8 @@ export default function Settings() {
             </section>
 
             <SmsSenders tenantId={tenantId} />
+
+            <QuietSettings tenantId={tenantId} />
 
             <SupportAccess tenantId={tenantId} />
 
