@@ -21,6 +21,8 @@ export default function Retention() {
   const [items, setItems] = useState([]);
   const [rules, setRules] = useState([]);
   const [preview, setPreview] = useState(null);
+  const [segments, setSegments] = useState([]);
+  const [audience, setAudience] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -37,6 +39,10 @@ export default function Retention() {
         { credentials: "include" });
       const rulesBody = await rulesRes.json().catch(() => null);
       if (rulesRes.ok) setRules(rulesBody.items || []);
+      const segmentsRes = await fetch(`/api/audience?${new URLSearchParams({ tenant_id: tenantId })}`,
+        { credentials: "include" });
+      const segmentsBody = await segmentsRes.json().catch(() => null);
+      if (segmentsRes.ok) setSegments(segmentsBody.items || []);
     } catch (err) {
       setError(err.message || "Due cycles could not be loaded.");
     } finally { setBusy(false); }
@@ -53,6 +59,21 @@ export default function Retention() {
       setPreview(body);
     } catch (err) {
       setError(err.message || "Preview could not be computed.");
+    }
+  };
+
+  const showAudience = (segmentId) => async () => {
+    setError("");
+    try {
+      const res = await fetch(`/api/audience?${new URLSearchParams({ tenant_id: tenantId, segment_id: segmentId })}`,
+        { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: "sms" }) });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "Audience could not be computed."));
+      setAudience(body);
+    } catch (err) {
+      setError(err.message || "Audience could not be computed.");
     }
   };
 
@@ -117,6 +138,33 @@ export default function Retention() {
                 Due {preview.due_total}: {preview.eligible} eligible, {preview.suppressed} suppressed,{" "}
                 {preview.unreachable} unreachable — about {preview.estimated_sends} sends
                 ({preview.estimated_cost_minor}¢ {preview.currency}).
+              </p>
+            )}
+          </section>
+
+          <section style={panel}>
+            <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Offer audiences</h2>
+            <p style={{ ...muted, marginTop: 0 }}>
+              Segments resolve to consenting, reachable clients only. Shared numbers never inflate the count.
+            </p>
+            {segments.length === 0 && <p style={muted}>No segments yet.</p>}
+            <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 10 }}>
+              {segments.map((segment) => (
+                <li key={segment.id}>
+                  <strong>{segment.name}</strong>{" "}
+                  <button type="button" style={button} disabled={busy} onClick={showAudience(segment.id)}>
+                    Preview audience
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {audience && (
+              <p role="status" style={{ ...muted, marginTop: 8 }}>
+                {audience.candidates} candidates: {audience.eligible_count} eligible across{" "}
+                {audience.reachable_numbers} numbers
+                ({audience.shared_numbers} shared) —{" "}
+                {audience.exclusions.no_consent} no consent, {audience.exclusions.suppressed} suppressed,{" "}
+                {audience.exclusions.unreachable} unreachable.
               </p>
             )}
           </section>
