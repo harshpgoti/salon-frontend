@@ -20,6 +20,105 @@ function errorText(payload, fallback) {
   return fallback;
 }
 
+// SMS sender setup (TASK-029): list the salon's sender identities, register a new one,
+// and verify it with the code the API returns. Verification state comes from the API;
+// this page never invents it.
+function SmsSenders({ tenantId }) {
+  const [senders, setSenders] = useState([]);
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
+  const [working, setWorking] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const res = await fetch(`/api/senders?${new URLSearchParams({ tenant_id: tenantId })}`,
+        { credentials: "include" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "Senders could not be loaded."));
+      setSenders(body.items || []);
+    } catch (err) {
+      setProblem(err.message || "Senders could not be loaded.");
+    }
+  }, [tenantId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function post(query, payload, okMessage) {
+    setWorking(true); setProblem(""); setNote("");
+    try {
+      const res = await fetch(`/api/senders?${new URLSearchParams({ tenant_id: tenantId, ...query })}`,
+        { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload || {}) });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "That change could not be saved."));
+      setNote(okMessage);
+      await load();
+      return body;
+    } catch (err) {
+      setProblem(err.message || "That change could not be saved.");
+      return null;
+    } finally { setWorking(false); }
+  }
+
+  const register = (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    post({}, { label: String(form.get("label") || ""), sender_identity: String(form.get("sender_identity") || "") },
+      "Sender registered. Enter the verification code below to activate it.").then(() => event.currentTarget.reset());
+  };
+  const verify = (senderId) => (event) => {
+    event.preventDefault();
+    const code = String(new FormData(event.currentTarget).get("code") || "");
+    post({ sender_id: senderId, action: "verify" }, { code }, "Sender verified. SMS reminders can now use it.");
+  };
+  const suspend = (senderId) => () => {
+    post({ sender_id: senderId, action: "suspend" }, {}, "Sender suspended. It will no longer send SMS.");
+  };
+
+  return (
+    <section style={panel}>
+      <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>SMS senders</h2>
+      <p style={{ ...muted, marginTop: 0 }}>
+        Reminders go out under your own verified number only. Unverified numbers never send.
+      </p>
+      {problem && <p role="alert" style={{ color: "#8c2626" }}>{problem}</p>}
+      {note && <p role="status" style={{ color: "#2c3f31" }}>{note}</p>}
+      <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 10 }}>
+        {senders.map((sender) => (
+          <li key={sender.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span><strong>{sender.label}</strong> {sender.sender_identity} — {sender.status}</span>
+            <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {sender.status === "pending" && (
+                <form onSubmit={verify(sender.id)} style={{ display: "flex", gap: 8 }}>
+                  <input name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required
+                    placeholder="6-digit code" aria-label={`Verification code for ${sender.label}`}
+                    style={{ ...input, marginTop: 0, maxWidth: 140 }} />
+                  <button type="submit" style={button} disabled={working}>Verify</button>
+                </form>
+              )}
+              {sender.status === "verified" && (
+                <button type="button" style={{ ...button, background: "#8c2626" }}
+                  disabled={working} onClick={suspend(sender.id)}>Suspend</button>
+              )}
+            </span>
+          </li>
+        ))}
+        {senders.length === 0 && <li style={muted}>No senders yet. Register your salon number below.</li>}
+      </ul>
+      <form onSubmit={register} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label>Label
+          <input style={{ ...input, maxWidth: 200 }} name="label" maxLength={80} required placeholder="Front desk" />
+        </label>
+        <label>Sender number
+          <input style={{ ...input, maxWidth: 200 }} name="sender_identity" required placeholder="+14165550132" />
+        </label>
+        <button type="submit" style={button} disabled={working}>Register sender</button>
+      </form>
+    </section>
+  );
+}
+
 // Like the team page, the tenant id here only selects which salon to load. Every
 // authorization decision is made by the API from the session cookie.
 export default function Settings() {
@@ -198,6 +297,8 @@ export default function Settings() {
                 <div><button type="submit" style={button} disabled={busy || !settingsLoaded}>{busy ? "Saving…" : "Save settings"}</button></div>
               </form>
             </section>
+
+            <SmsSenders tenantId={tenantId} />
 
             <p><a href="/team">Manage your team →</a></p>
           </>
