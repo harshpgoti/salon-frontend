@@ -67,6 +67,37 @@ function Billing({ tenantId }) {
     } finally { setWorking(false); }
   };
 
+  const changePlan = (planCode) => async () => {
+    setWorking(true); setProblem(""); setNote("");
+    try {
+      const body = await call("subscription/plan",
+        { fetch: { method: "POST", headers: { "Content-Type": "application/json" },
+                   body: JSON.stringify({ plan_code: planCode }) } });
+      setNote(body.effective === "immediate"
+        ? `Plan changed to ${body.plan_code} immediately.`
+        : `Downgrade to ${body.plan_code} scheduled for ${body.applies_at}.`);
+      await load();
+    } catch (err) {
+      setProblem(err.message || "The plan could not be changed.");
+    } finally { setWorking(false); }
+  };
+
+  const cancel = async () => {
+    setWorking(true); setProblem(""); setNote("");
+    try {
+      const withdrawing = !!subscription?.cancel_at_period_end;
+      const body = await call("subscription/cancel",
+        { fetch: { method: "POST", headers: { "Content-Type": "application/json" },
+                   body: JSON.stringify({ at_period_end: !withdrawing }) } });
+      setNote(body.cancel_at_period_end
+        ? "Cancellation scheduled. Everything keeps working until the period ends."
+        : "Cancellation withdrawn.");
+      await load();
+    } catch (err) {
+      setProblem(err.message || "Cancellation could not be saved.");
+    } finally { setWorking(false); }
+  };
+
   const portal = async () => {
     setWorking(true); setProblem(""); setNote("");
     try {
@@ -93,14 +124,25 @@ function Billing({ tenantId }) {
         {plans.map((plan) => (
           <li key={plan.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <span><strong>{plan.name}</strong> — {money(plan.price_minor)} CAD/mo · up to {plan.limits.max_locations} location(s), {plan.limits.max_staff} staff</span>
-            <button type="button" style={button} disabled={working} onClick={checkout(plan.code)}>
-              Choose {plan.name}
-            </button>
+            {subscription?.status === "trial" ? (
+              <button type="button" style={button} disabled={working} onClick={checkout(plan.code)}>
+                Choose {plan.name}
+              </button>
+            ) : (
+              <button type="button" style={button} disabled={working} onClick={changePlan(plan.code)}>
+                Switch to {plan.name}
+              </button>
+            )}
           </li>
         ))}
       </ul>
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" style={button} disabled={working} onClick={portal}>Manage payment</button>
+        {subscription && subscription.status !== "trial" && (
+          <button type="button" style={{ ...button, background: "#8c2626" }} disabled={working} onClick={cancel}>
+            {subscription.cancel_at_period_end ? "Withdraw cancellation" : "Cancel at period end"}
+          </button>
+        )}
       </div>
       {invoices.length > 0 && (
         <ul style={{ margin: "12px 0 0", paddingLeft: 20 }}>

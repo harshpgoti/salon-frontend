@@ -30,10 +30,15 @@ export default async function handler(req, res) {
   }
 
   const method = req.method;
+  const sub = slug[1] ? String(slug[1]) : null;
+  if (sub && !/^(plan|cancel)$/.test(sub)) {
+    return res.status(404).json({ detail: { code: "not_found" } });
+  }
   const allowed = (resource === "plans" && method === "GET")
-    || (resource === "subscription" && method === "GET")
+    || (resource === "subscription" && method === "GET" && !sub)
+    || (resource === "subscription" && method === "POST" && !!sub)
     || (resource === "invoices" && method === "GET")
-    || (resource === "checkout" && method === "POST")
+    || (resource === "checkout" && method === "POST" && !sub)
     || (resource === "portal" && method === "POST");
   if (!allowed) {
     res.setHeader("Allow", "GET, POST");
@@ -60,7 +65,7 @@ export default async function handler(req, res) {
     body = JSON.stringify(req.body);
   }
 
-  const upstreamPath = `/v1/tenants/${tenantId}/billing/${resource}`;
+  const upstreamPath = `/v1/tenants/${tenantId}/billing/${slug.map(encodeURIComponent).join("/")}`;
 
   let response;
   try {
