@@ -5,7 +5,7 @@ import { randomUUID } from "crypto";
 // decides who the caller is and never trusts a tenant id from the client.
 const API_BASE = process.env.API_BASE_URL;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACTION = /^(approve|cancel|test)$/;
+const ACTION = /^(approve|cancel|test|report)$/;
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
@@ -29,10 +29,12 @@ export default async function handler(req, res) {
   }
 
   const method = req.method;
-  // GET lists; POST creates; POST with id+action approves/cancels/tests.
+  // GET lists; POST creates; POST with id+action approves/cancels/tests;
+  // GET with id+report reads the outcome report.
   const allowed = (!campaignId && (method === "GET" || method === "POST"))
     || (campaignId && !action && method === "PATCH")
-    || (campaignId && action && method === "POST");
+    || (campaignId && action && action !== "report" && method === "POST")
+    || (campaignId && action === "report" && method === "GET");
   if (!allowed) {
     res.setHeader("Allow", "GET, POST, PATCH");
     return res.status(405).json({ detail: { code: "method_not_allowed" } });
@@ -54,6 +56,7 @@ export default async function handler(req, res) {
 
   const upstreamPath = !campaignId ? `/v1/tenants/${tenantId}/campaigns`
     : !action ? `/v1/tenants/${tenantId}/campaigns/${campaignId}`
+    : action === "report" ? `/v1/tenants/${tenantId}/campaigns/${campaignId}/report`
     : `/v1/tenants/${tenantId}/campaigns/${campaignId}/${action}`;
 
   let response;

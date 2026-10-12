@@ -25,6 +25,7 @@ export default function Retention() {
   const [audience, setAudience] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [campaignNote, setCampaignNote] = useState("");
+  const [campaignReport, setCampaignReport] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -99,6 +100,19 @@ export default function Retention() {
       await load();
     } catch (err) {
       setError(err.message || "That campaign action failed.");
+    }
+  };
+
+  const showReport = (campaignId) => async () => {
+    setError("");
+    try {
+      const res = await fetch(`/api/campaigns?${new URLSearchParams({ tenant_id: tenantId, campaign_id: campaignId, action: "report" })}`,
+        { credentials: "include" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "Report could not be loaded."));
+      setCampaignReport(body);
+    } catch (err) {
+      setError(err.message || "Report could not be loaded.");
     }
   };
 
@@ -212,10 +226,18 @@ export default function Retention() {
                     {(campaign.status === "scheduled" || campaign.status === "sending") && (
                       <button type="button" style={{ ...button, background: "#8c2626" }} disabled={busy} onClick={campaignAction(campaign.id, "cancel")}>Cancel</button>
                     )}
+                    <button type="button" style={button} disabled={busy} onClick={showReport(campaign.id)}>Report</button>
                   </span>
                 </li>
               ))}
             </ul>
+            {campaignReport && (
+              <p role="status" style={{ ...muted, marginTop: 8 }}>
+                {campaignReport.name}: {campaignReport.attributed_count} attributed bookings,{" "}
+                ${(campaignReport.attributed_recorded_minor / 100).toFixed(2)} recorded,{" "}
+                {campaignReport.unsubscribes_since_approval} unsubscribes since approval.
+              </p>
+            )}
           </section>
           </>
         )}
