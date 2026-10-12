@@ -20,6 +20,99 @@ function errorText(payload, fallback) {
   return fallback;
 }
 
+// Salon billing (TASK-046): plan, trial state, hosted checkout and invoices. The page
+// only displays what the API reports; plan changes activate through provider webhooks,
+// never from this browser.
+function Billing({ tenantId }) {
+  const [plans, setPlans] = useState([]);
+  const [subscription, setSubscription] = useState(null);
+  const [invoices, setInvoices] = useState([]);
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
+  const [working, setWorking] = useState(false);
+
+  const call = useCallback(async (resource, options = {}) => {
+    const res = await fetch(`/api/billing/${resource}?${new URLSearchParams({ tenant_id: tenantId, ...(options.query || {}) })}`,
+      { credentials: "include", ...(options.fetch || {}) });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(errorText(body, "Billing is unavailable right now."));
+    return body;
+  }, [tenantId]);
+
+  const load = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const [plansBody, subBody, invoicesBody] = await Promise.all([
+        call("plans"), call("subscription"), call("invoices"),
+      ]);
+      setPlans(plansBody.items || []);
+      setSubscription(subBody);
+      setInvoices(invoicesBody.items || []);
+    } catch (err) {
+      setProblem(err.message || "Billing is unavailable right now.");
+    }
+  }, [tenantId, call]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const checkout = (planCode) => async () => {
+    setWorking(true); setProblem(""); setNote("");
+    try {
+      const body = await call("checkout",
+        { fetch: { method: "POST", headers: { "Content-Type": "application/json" },
+                   body: JSON.stringify({ plan_code: planCode }) } });
+      setNote(`Checkout opened. Complete payment in the hosted page; your plan activates automatically afterwards. ${body.checkout_url}`);
+    } catch (err) {
+      setProblem(err.message || "Checkout could not start.");
+    } finally { setWorking(false); }
+  };
+
+  const portal = async () => {
+    setWorking(true); setProblem(""); setNote("");
+    try {
+      const body = await call("portal", { fetch: { method: "POST" } });
+      setNote(`Manage payment in the hosted portal: ${body.url}`);
+    } catch (err) {
+      setProblem(err.message || "The portal could not open.");
+    } finally { setWorking(false); }
+  };
+
+  const money = (minor) => `$${(minor / 100).toFixed(2)}`;
+
+  return (
+    <section style={panel}>
+      <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Billing</h2>
+      <p style={{ ...muted, marginTop: 0 }}>
+        {subscription
+          ? `Current plan: ${subscription.plan_name} (${subscription.status}).`
+          : "Loading subscription…"}
+      </p>
+      {problem && <p role="alert" style={{ color: "#8c2626" }}>{problem}</p>}
+      {note && <p role="status" style={{ color: "#2c3f31", wordBreak: "break-all" }}>{note}</p>}
+      <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 10 }}>
+        {plans.map((plan) => (
+          <li key={plan.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span><strong>{plan.name}</strong> — {money(plan.price_minor)} CAD/mo · up to {plan.limits.max_locations} location(s), {plan.limits.max_staff} staff</span>
+            <button type="button" style={button} disabled={working} onClick={checkout(plan.code)}>
+              Choose {plan.name}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" style={button} disabled={working} onClick={portal}>Manage payment</button>
+      </div>
+      {invoices.length > 0 && (
+        <ul style={{ margin: "12px 0 0", paddingLeft: 20 }}>
+          {invoices.map((invoice) => (
+            <li key={invoice.id}>{invoice.plan} — {money(invoice.amount_minor)} {invoice.currency} ({invoice.status})</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 // SMS sender setup (TASK-029): list the salon's sender identities, register a new one,
 // and verify it with the code the API returns. Verification state comes from the API;
 // this page never invents it.
@@ -299,6 +392,8 @@ export default function Settings() {
             </section>
 
             <SmsSenders tenantId={tenantId} />
+
+            <Billing tenantId={tenantId} />
 
             <p><a href="/team">Manage your team →</a></p>
           </>
