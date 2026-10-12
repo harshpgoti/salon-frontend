@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 // decides who the caller is and never trusts a tenant id from the client.
 const API_BASE = process.env.API_BASE_URL;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RESOURCE = /^(cycles|rules|preview|overrides)$/;
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
@@ -18,11 +19,22 @@ export default async function handler(req, res) {
   if (!tenantId || Array.isArray(tenantId) || !UUID.test(String(tenantId))) {
     return res.status(400).json({ detail: { code: "invalid_tenant_id" } });
   }
+  const resource = String(req.query.resource ?? "cycles");
+  if (!RESOURCE.test(resource)) {
+    return res.status(404).json({ detail: { code: "not_found" } });
+  }
+  const ruleId = req.query.rule_id ? String(req.query.rule_id) : null;
+  if (ruleId && !UUID.test(ruleId)) {
+    return res.status(400).json({ detail: { code: "invalid_rule_id" } });
+  }
 
   const method = req.method;
-  const allowed = (method === "GET" && !req.query.client_id)
-    || (method === "GET" && UUID.test(String(req.query.client_id || "")))
-    || method === "POST";
+  // cycles: GET list (optional status/client_id). rules: GET list, POST create.
+  // preview: POST one rule's preview. overrides: POST one client override.
+  const allowed = (resource === "cycles" && method === "GET")
+    || (resource === "rules" && (method === "GET" || (method === "POST" && !ruleId)))
+    || (resource === "preview" && method === "POST" && ruleId)
+    || (resource === "overrides" && method === "POST");
   if (!allowed) {
     res.setHeader("Allow", "GET, POST");
     return res.status(405).json({ detail: { code: "method_not_allowed" } });
@@ -42,15 +54,15 @@ export default async function handler(req, res) {
     body = JSON.stringify(req.body);
   }
 
-  // GET lists due cycles (optional status/client_id filters stay upstream as query);
-  // POST sets a per-client interval override.
+  // Routing parameters never travel upstream as query values.
   const params = new URLSearchParams();
   for (const key of ["status", "client_id"]) {
     if (req.query[key]) params.append(key, String(req.query[key]));
   }
   const suffix = params.toString() ? `?${params}` : "";
-  const upstreamPath = method === "GET"
-    ? `/v1/tenants/${tenantId}/rebooking-cycles${suffix}`
+  const upstreamPath = resource === "cycles" ? `/v1/tenants/${tenantId}/rebooking-cycles${suffix}`
+    : resource === "rules" ? `/v1/tenants/${tenantId}/rebooking-rules`
+    : resource === "preview" ? `/v1/tenants/${tenantId}/rebooking-rules/${ruleId}/preview`
     : `/v1/tenants/${tenantId}/rebooking-overrides`;
 
   let response;

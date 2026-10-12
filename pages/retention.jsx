@@ -19,6 +19,8 @@ export default function Retention() {
   const router = useRouter();
   const [tenantId, setTenantId] = useState("");
   const [items, setItems] = useState([]);
+  const [rules, setRules] = useState([]);
+  const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -31,10 +33,28 @@ export default function Retention() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(errorText(body, "Due cycles could not be loaded."));
       setItems(body.items || []);
+      const rulesRes = await fetch(`/api/retention?${new URLSearchParams({ tenant_id: tenantId, resource: "rules" })}`,
+        { credentials: "include" });
+      const rulesBody = await rulesRes.json().catch(() => null);
+      if (rulesRes.ok) setRules(rulesBody.items || []);
     } catch (err) {
       setError(err.message || "Due cycles could not be loaded.");
     } finally { setBusy(false); }
   }, [tenantId]);
+
+  const showPreview = (ruleId) => async () => {
+    setError("");
+    try {
+      const res = await fetch(`/api/retention?${new URLSearchParams({ tenant_id: tenantId, resource: "preview", rule_id: ruleId })}`,
+        { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: "{}" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "Preview could not be computed."));
+      setPreview(body);
+    } catch (err) {
+      setError(err.message || "Preview could not be computed.");
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -62,6 +82,7 @@ export default function Retention() {
         {error && <p role="alert" style={{ ...panel, color: "#8c2626" }}>{error}</p>}
 
         {!tenantId ? <p style={muted}>Enter your workspace id to load due cycles.</p> : (
+          <>
           <section style={panel}>
             {items.length === 0 && <p style={muted}>{busy ? "Loading…" : "Nothing due."}</p>}
             <ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 10 }}>
@@ -73,6 +94,33 @@ export default function Retention() {
               ))}
             </ul>
           </section>
+
+          <section style={panel}>
+            <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Rebooking rules</h2>
+            <p style={{ ...muted, marginTop: 0 }}>
+              One rule per service. Preview shows who would be reached and what it would cost before anything sends.
+            </p>
+            {rules.length === 0 && <p style={muted}>No rules yet.</p>}
+            <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 10 }}>
+              {rules.map((rule) => (
+                <li key={rule.id}>
+                  <strong>{rule.service_name}</strong> — every {rule.interval_days} days via {rule.channel}
+                  {rule.is_active ? " · active" : " · draft"}{" "}
+                  <button type="button" style={button} disabled={busy} onClick={showPreview(rule.id)}>
+                    Preview
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {preview && (
+              <p role="status" style={{ ...muted, marginTop: 8 }}>
+                Due {preview.due_total}: {preview.eligible} eligible, {preview.suppressed} suppressed,{" "}
+                {preview.unreachable} unreachable — about {preview.estimated_sends} sends
+                ({preview.estimated_cost_minor}¢ {preview.currency}).
+              </p>
+            )}
+          </section>
+          </>
         )}
       </main>
     </div>
