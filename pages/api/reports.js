@@ -6,7 +6,7 @@ import { randomUUID } from "crypto";
 const API_BASE = process.env.API_BASE_URL;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const REPORT = /^(today|operational|clients)$/;
+const REPORT = /^(today|operational|clients|marketing)$/;
 
 export default async function handler(req, res) {
   const requestId = randomUUID();

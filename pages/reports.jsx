@@ -25,6 +25,7 @@ export default function Reports() {
   const [to, setTo] = useState("");
   const [report, setReport] = useState(null);
   const [cohorts, setCohorts] = useState(null);
+  const [marketing, setMarketing] = useState(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -42,6 +43,11 @@ export default function Reports() {
         { credentials: "include" });
       const clientsBody = await clientsRes.json().catch(() => null);
       if (clientsRes.ok) setCohorts(clientsBody);
+      const marketingRes = await fetch(`/api/reports?${new URLSearchParams({
+        tenant_id: tenantId, report: "marketing", date_from: from, date_to: to })}`,
+        { credentials: "include" });
+      const marketingBody = await marketingRes.json().catch(() => null);
+      if (marketingRes.ok) setMarketing(marketingBody);
     } catch (err) {
       setError(err.message || "The report could not be loaded.");
     }
@@ -108,7 +114,7 @@ export default function Reports() {
 
             {cohorts && (
               <section style={panel}>
-                <h2 style={{ fontSize: 17, margin: "0 0 6px" }}>Client cohorts</h2>
+                <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Client cohorts</h2>
                 <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 8 }}>
                   {cohorts.cohorts.map((cohort) => (
                     <li key={cohort.cohort}>
@@ -122,6 +128,24 @@ export default function Reports() {
                 <p style={muted}>
                   Due cycles {cohorts.segments.due_cycles} · unreachable {cohorts.data_quality.clients_without_contacts} ·
                   open duplicates {cohorts.data_quality.open_duplicate_candidates}
+                </p>
+              </section>
+            )}
+
+            {marketing && (
+              <section style={panel}>
+                <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Marketing performance</h2>
+                <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 8 }}>
+                  {marketing.delivery_by_channel_state.map((row, index) => (
+                    <li key={index}>{row.channel} {row.state}: {row.count}</li>
+                  ))}
+                  {marketing.delivery_by_channel_state.length === 0 && <li style={muted}>Nothing sent in range.</li>}
+                </ul>
+                <p style={muted}>
+                  Unknown delivery {marketing.unknown_delivery} · unsubscribes{" "}
+                  {Object.values(marketing.unsubscribes_by_reason).reduce((a, b) => a + b, 0)} ·{" "}
+                  prompt-attributed bookings {marketing.automation.prompt_attributed_bookings} ·{" "}
+                  costs {marketing.message_costs.by_channel.map((c) => `${c.channel} ${c.minor}¢`).join(", ") || "none"}
                 </p>
               </section>
             )}
