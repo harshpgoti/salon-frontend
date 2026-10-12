@@ -23,6 +23,8 @@ export default function Retention() {
   const [preview, setPreview] = useState(null);
   const [segments, setSegments] = useState([]);
   const [audience, setAudience] = useState(null);
+  const [campaigns, setCampaigns] = useState([]);
+  const [campaignNote, setCampaignNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -43,6 +45,10 @@ export default function Retention() {
         { credentials: "include" });
       const segmentsBody = await segmentsRes.json().catch(() => null);
       if (segmentsRes.ok) setSegments(segmentsBody.items || []);
+      const campaignsRes = await fetch(`/api/campaigns?${new URLSearchParams({ tenant_id: tenantId })}`,
+        { credentials: "include" });
+      const campaignsBody = await campaignsRes.json().catch(() => null);
+      if (campaignsRes.ok) setCampaigns(campaignsBody.items || []);
     } catch (err) {
       setError(err.message || "Due cycles could not be loaded.");
     } finally { setBusy(false); }
@@ -74,6 +80,25 @@ export default function Retention() {
       setAudience(body);
     } catch (err) {
       setError(err.message || "Audience could not be computed.");
+    }
+  };
+
+  const campaignAction = (campaignId, action, payload) => async () => {
+    setError(""); setCampaignNote("");
+    try {
+      const res = await fetch(`/api/campaigns?${new URLSearchParams({ tenant_id: tenantId, campaign_id: campaignId, action })}`,
+        { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload || {}) });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "That campaign action failed."));
+      setCampaignNote(action === "approve"
+        ? `Approved: ${body.eligible} eligible, budget locked.`
+        : action === "cancel" ? "Cancelled: future sends stopped."
+        : `Test recorded: ${body.communication_id}`);
+      await load();
+    } catch (err) {
+      setError(err.message || "That campaign action failed.");
     }
   };
 
@@ -167,6 +192,30 @@ export default function Retention() {
                 {audience.exclusions.unreachable} unreachable.
               </p>
             )}
+          </section>
+
+          <section style={panel}>
+            <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Offer campaigns</h2>
+            <p style={{ ...muted, marginTop: 0 }}>
+              Draft, approve, test and cancel. Approval locks the audience, budget and schedule; sends stop at the budget.
+            </p>
+            {campaignNote && <p role="status" style={{ color: "#2c3f31" }}>{campaignNote}</p>}
+            {campaigns.length === 0 && <p style={muted}>No campaigns yet.</p>}
+            <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 10 }}>
+              {campaigns.map((campaign) => (
+                <li key={campaign.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <span><strong>{campaign.name}</strong> — {campaign.channel} · {campaign.status} · sent {campaign.sent}, skipped {campaign.skipped}</span>
+                  <span style={{ display: "flex", gap: 8 }}>
+                    {campaign.status === "draft" && (
+                      <button type="button" style={button} disabled={busy} onClick={campaignAction(campaign.id, "approve")}>Approve</button>
+                    )}
+                    {(campaign.status === "scheduled" || campaign.status === "sending") && (
+                      <button type="button" style={{ ...button, background: "#8c2626" }} disabled={busy} onClick={campaignAction(campaign.id, "cancel")}>Cancel</button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </section>
           </>
         )}
