@@ -6,7 +6,7 @@ import { randomUUID } from "crypto";
 const API_BASE = process.env.API_BASE_URL;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const REPORT = /^(today|operational)$/;
+const REPORT = /^(today|operational|clients)$/;
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
@@ -29,12 +29,13 @@ export default async function handler(req, res) {
     return res.status(404).json({ detail: { code: "not_found" } });
   }
   const params = new URLSearchParams();
-  for (const key of ["day", "date_from", "date_to", "location_id", "staff_id", "service_id"]) {
+  for (const key of ["day", "date_from", "date_to", "as_of", "location_id", "staff_id", "service_id"]) {
     if (req.query[key]) params.append(key, String(req.query[key]));
   }
   if ((params.get("day") && !DAY.test(params.get("day")))
     || (params.get("date_from") && !DAY.test(params.get("date_from")))
     || (params.get("date_to") && !DAY.test(params.get("date_to")))
+    || (params.get("as_of") && !DAY.test(params.get("as_of")))
     || (params.get("location_id") && !UUID.test(params.get("location_id")))
     || (params.get("staff_id") && !UUID.test(params.get("staff_id")))
     || (params.get("service_id") && !UUID.test(params.get("service_id")))) {

@@ -24,6 +24,7 @@ export default function Reports() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [report, setReport] = useState(null);
+  const [cohorts, setCohorts] = useState(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -36,6 +37,11 @@ export default function Reports() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(errorText(body, "The report could not be loaded."));
       setReport(body);
+      const clientsRes = await fetch(`/api/reports?${new URLSearchParams({
+        tenant_id: tenantId, report: "clients", as_of: to })}`,
+        { credentials: "include" });
+      const clientsBody = await clientsRes.json().catch(() => null);
+      if (clientsRes.ok) setCohorts(clientsBody);
     } catch (err) {
       setError(err.message || "The report could not be loaded.");
     }
@@ -99,6 +105,26 @@ export default function Reports() {
               <h2 style={{ fontSize: 17, margin: "0 0 6px" }}>Definitions</h2>
               <p style={{ ...muted, whiteSpace: "pre-wrap" }}>{report.definitions.basis} Generated {report.generated_at}.</p>
             </section>
+
+            {cohorts && (
+              <section style={panel}>
+                <h2 style={{ fontSize: 17, margin: "0 0 6px" }}>Client cohorts</h2>
+                <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 8 }}>
+                  {cohorts.cohorts.map((cohort) => (
+                    <li key={cohort.cohort}>
+                      <strong>{cohort.cohort}</strong> — {cohort.clients} clients, {cohort.repeaters} repeaters
+                      {cohort.avg_return_days != null && `, ${cohort.avg_return_days}d avg return`}
+                      {cohort.immature && " (provisional)"}
+                    </li>
+                  ))}
+                  {cohorts.cohorts.length === 0 && <li style={muted}>No cohorts yet.</li>}
+                </ul>
+                <p style={muted}>
+                  Due cycles {cohorts.segments.due_cycles} · unreachable {cohorts.data_quality.clients_without_contacts} ·
+                  open duplicates {cohorts.data_quality.open_duplicate_candidates}
+                </p>
+              </section>
+            )}
           </>
         )}
       </main>
