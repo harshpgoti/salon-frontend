@@ -88,6 +88,9 @@ export default function Reports() {
 
         {report && (
           <>
+            <p role="status" style={{ ...muted, marginTop: 0 }}>
+              Report {report.date_from} to {report.date_to} ({report.timezone}), generated {report.generated_at}.
+            </p>
             <section style={panel}>
               <h2 style={{ fontSize: 17, margin: "0 0 6px" }}>Bookings ({report.timezone})</h2>
               <p style={muted}>{report.bookings.total} total · completion {report.rates.completion_rate ?? "—"} · cancellation {report.rates.cancellation_rate ?? "—"} · no-show {report.rates.no_show_rate ?? "—"}</p>

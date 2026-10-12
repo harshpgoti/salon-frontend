@@ -51,10 +51,9 @@ export default function Today() {
         <header style={{ marginBottom: 24 }}>
           <div style={muted}>Front desk</div>
           <h1 style={{ margin: "6px 0", fontSize: 30 }}>Today{report ? ` — ${report.date}` : ""}</h1>
-          <p style={muted}>
+          <p role="status" style={muted}>
             {report ? `Updated ${new Date(report.generated_at).toLocaleTimeString()}.` : "Your actionable work for the day."}
-          </p>
-        </header>
+          </p>        </header>
 
         <section style={panel}>
           <label style={{ display: "block", maxWidth: 420 }}>
