@@ -1,3 +1,4 @@
+import {privatePage} from "../lib/session";
 import { useState } from "react";
 import Head from "next/head";
 
@@ -23,7 +24,7 @@ export default function Onboarding() {
 
   return <main style={{ maxWidth: 600, margin: "8vh auto", padding: 28, fontFamily: "system-ui", color: "#20231f" }}>
     <Head><title>Set up your salon · Salon Operations</title></Head>
-    <a href="/" style={{ color: "#526b55" }}>← Dashboard preview</a>
+    <a href="/salon" style={{ color: "#526b55" }}>← Salon overview</a>
     <h1>Set up your salon</h1>
     <p>Start with your business and first location. You can add services, team members and hours next.</p>
     <form onSubmit={submit} style={{ display: "grid", gap: 16 }}>
@@ -38,3 +39,5 @@ export default function Onboarding() {
 }
 
 const field = { display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, padding: 11, border: "1px solid #bbb", borderRadius: 7 };
+
+export const getServerSideProps=privatePage("staff");

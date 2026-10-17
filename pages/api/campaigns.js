@@ -5,7 +5,7 @@ import { randomUUID } from "crypto";
 // decides who the caller is and never trusts a tenant id from the client.
 const API_BASE = process.env.API_BASE_URL;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACTION = /^(approve|cancel|test|report)$/;
+const ACTION = /^(approve|cancel|pause|resume|test|report)$/;
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
@@ -47,7 +47,8 @@ export default async function handler(req, res) {
     ...(req.headers.origin ? { origin: req.headers.origin } : {}),
   };
   let body;
-  const hasBody = req.body !== undefined && req.body !== null
+  const hasBody = req.method !== "GET" && req.method !== "HEAD"
+    && req.body !== undefined && req.body !== null
     && !(typeof req.body === "object" && !Array.isArray(req.body) && Object.keys(req.body).length === 0);
   if (hasBody) {
     headers["Content-Type"] = "application/json";

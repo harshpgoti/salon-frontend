@@ -6,13 +6,14 @@ import { randomUUID } from "crypto";
 const API_BASE = process.env.API_BASE_URL;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STEP = /^[a-z_]{1,32}$/;
-const RESOURCES = new Set(["setup", "settings"]);
+const RESOURCES = new Set(["setup", "settings", "locations", "location-hours", "public-hours",
+  "location-exceptions", "exception-publish"]);
 
 function buildTarget(path, query) {
   const url = new URL(path, API_BASE);
   for (const [key, raw] of Object.entries(query || {})) {
     // Never replay routing parameters upstream as query values.
-    if (["tenant_id", "resource", "step"].includes(key)) continue;
+    if (["tenant_id", "resource", "step", "location_id", "exception_id"].includes(key)) continue;
     for (const value of Array.isArray(raw) ? raw : [raw]) {
       url.searchParams.append(key, String(value));
     }
@@ -32,6 +33,9 @@ export default async function handler(req, res) {
   if (!tenantId || Array.isArray(tenantId) || !UUID.test(String(tenantId))) {
     return res.status(400).json({ detail: { code: "invalid_tenant_id" } });
   }
+  if (Array.isArray(req.query.resource)) {
+    return res.status(400).json({ detail: { code: "invalid_settings_resource" } });
+  }
   const resource = String(req.query.resource ?? "setup");
   if (!RESOURCES.has(resource)) {
     return res.status(404).json({ detail: { code: "not_found" } });
@@ -41,14 +45,35 @@ export default async function handler(req, res) {
     return res.status(400).json({ detail: { code: "invalid_setup_step" } });
   }
 
+  const locationId = req.query.location_id;
+  const exceptionId = req.query.exception_id;
+  const locationScoped = ["location-hours", "public-hours", "location-exceptions", "exception-publish"].includes(resource);
+  if (locationScoped && (!locationId || Array.isArray(locationId) || !UUID.test(String(locationId)))) {
+    return res.status(400).json({ detail: { code: "invalid_location_id" } });
+  }
+  if (resource === "exception-publish"
+      && (!exceptionId || Array.isArray(exceptionId) || !UUID.test(String(exceptionId)))) {
+    return res.status(400).json({ detail: { code: "invalid_exception_id" } });
+  }
+  if (resource !== "exception-publish" && exceptionId !== undefined) {
+    return res.status(400).json({ detail: { code: "unexpected_exception_id" } });
+  }
+
   const method = req.method;
   // Only two request shapes have an API route: PATCH a single setup step, and GET or
   // PATCH the resource root. Anything else is refused here rather than forwarded to
   // produce a routing error from the API.
   const allowed = step ? (method === "PATCH" && resource === "setup")
-    : (method === "GET" || (method === "PATCH" && resource === "settings"));
+    : ["locations", "public-hours"].includes(resource) ? method === "GET"
+      : resource === "location-hours" ? ["GET", "PUT"].includes(method)
+        : resource === "location-exceptions" ? ["GET", "POST"].includes(method)
+          : resource === "exception-publish" ? method === "POST"
+      : (method === "GET" || (method === "PATCH" && resource === "settings"));
   if (!allowed) {
-    res.setHeader("Allow", step ? "PATCH" : "GET, PATCH");
+    const allow = step ? "PATCH" : ["locations", "public-hours"].includes(resource) ? "GET"
+      : resource === "location-hours" ? "GET, PUT" : resource === "location-exceptions" ? "GET, POST"
+        : resource === "exception-publish" ? "POST" : "GET, PATCH";
+    res.setHeader("Allow", allow);
     return res.status(405).json({ detail: { code: "method_not_allowed" } });
   }
 
@@ -59,14 +84,20 @@ export default async function handler(req, res) {
     ...(req.headers.origin ? { origin: req.headers.origin } : {}),
   };
   let body;
-  const hasBody = req.body !== undefined && req.body !== null
+  const hasBody = req.method !== "GET" && req.method !== "HEAD"
+    && req.body !== undefined && req.body !== null
     && !(typeof req.body === "object" && !Array.isArray(req.body) && Object.keys(req.body).length === 0);
   if (hasBody) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(req.body);
   }
 
-  const upstreamPath = `/v1/tenants/${tenantId}/${resource}` + (step ? `/${step}` : "");
+  const locationPath = locationScoped
+    ? `/locations/${locationId}/${resource === "location-hours" ? "hours"
+      : resource === "public-hours" ? "public-hours"
+        : `exceptions${resource === "exception-publish" ? `/${exceptionId}/publish` : ""}`}`
+    : `/${resource}`;
+  const upstreamPath = `/v1/tenants/${tenantId}${locationPath}` + (step ? `/${step}` : "");
 
   let response;
   try {

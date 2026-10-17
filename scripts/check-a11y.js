@@ -6,7 +6,8 @@ const fs = require("fs");
 const path = require("path");
 
 const dir = path.join(__dirname, "..", "pages");
-const files = fs.readdirSync(dir).filter((f) => f.endsWith(".jsx") && !f.startsWith("_"));
+function pages(root,prefix=''){return fs.readdirSync(root,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()&&entry.name!=='api'?pages(path.join(root,entry.name),prefix+entry.name+'/'):entry.isFile()&&entry.name.endsWith('.jsx')&&!entry.name.startsWith('_')?[prefix+entry.name]:[]);}
+const files=pages(dir);
 let failures = 0;
 
 function fail(file, message) {
@@ -15,7 +16,16 @@ function fail(file, message) {
 }
 
 for (const file of files) {
-  const src = fs.readFileSync(path.join(dir, file), "utf8");
+  let src = fs.readFileSync(path.join(dir, file), "utf8");
+  // Pages may delegate their rendered content to one reusable screen. Audit that
+  // screen too, rather than requiring duplicate headings in wrapper routes.
+  if (!/<h1[\s>]/.test(src)) {
+    for (const match of src.matchAll(/import (\w+) from ['"](\.\.[^'"]+)['"]/g)) {
+      if (!src.includes('<'+match[1]) && !src.includes('export default '+match[1]+';')) continue;
+      const resolved=path.resolve(path.dirname(path.join(dir,file)),match[2]+'.jsx');
+      if(fs.existsSync(resolved))src+='\n'+fs.readFileSync(resolved,'utf8');
+    }
+  }
 
   // Exactly one h1 per page.
   const h1 = (src.match(/<h1[\s>]/g) || []).length;
@@ -26,6 +36,9 @@ for (const file of files) {
   const withoutLabels = src.replace(/<label[\s>][\s\S]*?<\/label>/g, "");
   const controls = withoutLabels.match(/<(input|select|textarea)[\s>][^>]*\/?>/g) || [];
   for (const control of controls) {
+    // Hidden fields are not exposed as controls to assistive technology and
+    // intentionally do not have a visible label.
+    if (/^<input\b[^>]*\btype=["']hidden["']/i.test(control)) continue;
     if (!/aria-(label|labelledby)=/.test(control)) {
       fail(file, `unlabelled control: ${control.slice(0, 80)}`);
     }

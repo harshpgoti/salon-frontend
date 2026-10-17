@@ -10,7 +10,7 @@ function buildTarget(path, query) {
   const url = new URL(path, API_BASE);
   for (const [key, raw] of Object.entries(query || {})) {
     // Routing parameters are never replayed upstream as query values.
-    if (["tenant_id", "client_id", "resource", "contact_id", "field_definition_id", "field_value_id", "note_id", "preference_id", "import_id", "import_action", "row_number", "privacy_action", "catalogue_action", "service_id"].includes(key)) continue;
+    if (["tenant_id", "client_id", "resource", "contact_id", "field_definition_id", "field_value_id", "note_id", "preference_id", "import_id", "import_action", "row_number", "privacy_action", "hold_id", "catalogue_action", "service_id", "merge_action"].includes(key)) continue;
     for (const value of Array.isArray(raw) ? raw : [raw]) {
       url.searchParams.append(key, String(value));
     }
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ detail: { code: "invalid_client_id" } });
   }
   const resource = req.query.resource ? String(req.query.resource) : null;
-  const allowedResources = ["contacts", "timeline", "search", "field-definitions", "field-values", "visit-notes", "preferences", "imports", "privacy", "catalogue"];
+  const allowedResources = ["contacts", "timeline", "search", "field-definitions", "field-values", "visit-notes", "preferences", "imports", "privacy", "catalogue", "merges"];
   if (resource && !allowedResources.includes(resource)) {
     return res.status(404).json({ detail: { code: "not_found" } });
   }
@@ -105,6 +105,17 @@ export default async function handler(req, res) {
       }
       upstreamPath = `/v1/tenants/${tenantId}/imports/${importId}/rows`;
       allow = "GET";
+    } else if (importAction === "correct") {
+      if (method !== "PATCH") {
+        res.setHeader("Allow", "PATCH");
+        return res.status(405).json({ detail: { code: "method_not_allowed" } });
+      }
+      const rowNumber = Number(req.query.row_number);
+      if (!Number.isInteger(rowNumber) || rowNumber < 1) {
+        return res.status(400).json({ detail: { code: "invalid_row_number" } });
+      }
+      upstreamPath = `/v1/tenants/${tenantId}/imports/${importId}/rows/${rowNumber}`;
+      allow = "PATCH";
     } else if (importAction === "consent") {
       if (method !== "PATCH") {
         res.setHeader("Allow", "PATCH");
@@ -117,6 +128,22 @@ export default async function handler(req, res) {
       upstreamPath = `/v1/tenants/${tenantId}/imports/${importId}/rows/${rowNumber}/consent`;
       allow = "PATCH";
     } else {
+      return res.status(404).json({ detail: { code: "not_found" } });
+    }
+  } else if (resource === "merges") {
+    if (clientId) return res.status(404).json({ detail: { code: "not_found" } });
+    const action = req.query.merge_action ? String(req.query.merge_action) : null;
+    if (action === "list" && method === "GET") {
+      upstreamPath = `/v1/tenants/${tenantId}/client-merges`;
+      allow = "GET";
+    } else if ((action === "preview" || action === "commit") && method === "POST") {
+      upstreamPath = `/v1/tenants/${tenantId}/client-merges/${action}`;
+      allow = "POST";
+    } else {
+      if (["list", "preview", "commit"].includes(action)) {
+        res.setHeader("Allow", action === "list" ? "GET" : "POST");
+        return res.status(405).json({ detail: { code: "method_not_allowed" } });
+      }
       return res.status(404).json({ detail: { code: "not_found" } });
     }
   } else if (resource === "catalogue") {
@@ -155,10 +182,10 @@ export default async function handler(req, res) {
     allow = expected;
   } else if (resource === "privacy") {
     // Privacy requests are tenant-level and selected by `privacy_action`.
-    if (clientId) {
+    const action = req.query.privacy_action ? String(req.query.privacy_action) : null;
+    if (clientId && action !== "holds") {
       return res.status(404).json({ detail: { code: "not_found" } });
     }
-    const action = req.query.privacy_action ? String(req.query.privacy_action) : null;
     const routes = {
       "requests": ["GET", `/v1/tenants/${tenantId}/privacy-requests`, "GET"],
       "create": ["POST", `/v1/tenants/${tenantId}/privacy-requests`, "POST"],
@@ -166,7 +193,15 @@ export default async function handler(req, res) {
       "correction": ["POST", `/v1/tenants/${tenantId}/privacy-requests/correction`, "POST"],
       "deletion": ["POST", `/v1/tenants/${tenantId}/privacy-requests/deletion`, "POST"],
       "hold": ["POST", `/v1/tenants/${tenantId}/retention-holds`, "POST"],
+      "holds": ["GET", `/v1/tenants/${tenantId}/retention-holds${clientId ? `?client_id=${clientId}` : ""}`, "GET"],
     };
+    if (action === "hold_release") {
+      const holdId = req.query.hold_id ? String(req.query.hold_id) : null;
+      if (!holdId || !UUID.test(holdId)) {
+        return res.status(400).json({ detail: { code: "invalid_hold_id" } });
+      }
+      routes.hold_release = ["POST", `/v1/tenants/${tenantId}/retention-holds/${holdId}/release`, "POST"];
+    }
     const chosen = routes[action];
     if (!chosen) {
       return res.status(404).json({ detail: { code: "not_found" } });
@@ -189,10 +224,6 @@ export default async function handler(req, res) {
       upstreamPath = `/v1/tenants/${tenantId}/clients/search`;
       allow = "GET";
     } else if (resource === "field-definitions") {
-      if (method !== "GET" && method !== "POST") {
-        res.setHeader("Allow", "GET, POST");
-        return res.status(405).json({ detail: { code: "method_not_allowed" } });
-      }
       if (fieldDefinitionId) {
         if (method !== "PATCH") {
           res.setHeader("Allow", "PATCH");
@@ -201,6 +232,10 @@ export default async function handler(req, res) {
         upstreamPath = `/v1/tenants/${tenantId}/field-definitions/${fieldDefinitionId}`;
         allow = "PATCH";
       } else {
+        if (method !== "GET" && method !== "POST") {
+          res.setHeader("Allow", "GET, POST");
+          return res.status(405).json({ detail: { code: "method_not_allowed" } });
+        }
         upstreamPath = `/v1/tenants/${tenantId}/field-definitions`;
         allow = method === "GET" ? "GET" : "POST";
       }
@@ -310,7 +345,8 @@ export default async function handler(req, res) {
     ...(req.headers.origin ? { origin: req.headers.origin } : {}),
   };
   let body;
-  const hasBody = req.body !== undefined && req.body !== null
+  const hasBody = req.method !== "GET" && req.method !== "HEAD"
+    && req.body !== undefined && req.body !== null
     && !(typeof req.body === "object" && !Array.isArray(req.body) && Object.keys(req.body).length === 0);
   if (hasBody) {
     headers["Content-Type"] = "application/json";

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import {useWorkspace} from "../components/Workspace";
+import {privatePage} from "../lib/session";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 
@@ -17,29 +19,39 @@ function errorText(payload, fallback) {
 // by state, pending approvals, closures, who is on shift, and delivery follow-ups.
 export default function Today() {
   const router = useRouter();
-  const [tenantId, setTenantId] = useState("");
+  const {tenantId, setTenantId} = useWorkspace();
   const [report, setReport] = useState(null);
+  const [stale, setStale] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const requestId = useRef(0);
 
   const load = useCallback(async () => {
-    if (!tenantId) return;
+    const currentRequest = ++requestId.current;
+    setError("");
+    if (!tenantId) { setBusy(false); return; }
     setBusy(true); setError("");
     try {
       const res = await fetch(`/api/today?${new URLSearchParams({ tenant_id: tenantId })}`,
         { credentials: "include" });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(errorText(body, "Today could not be loaded."));
-      setReport(body);
+      if (requestId.current === currentRequest) { setReport(body); setStale(false); }
     } catch (err) {
-      setError(err.message || "Today could not be loaded.");
-    } finally { setBusy(false); }
+      if (requestId.current === currentRequest) {
+        setStale(true);
+        setError(err.message || "Today could not be loaded.");
+      }
+    } finally { if (requestId.current === currentRequest) setBusy(false); }
   }, [tenantId]);
 
-  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    if (router.isReady && router.query.tenant) setTenantId(String(router.query.tenant));
-  }, [router.isReady, router.query.tenant]);
+    setReport(null);
+    setStale(false);
+    setError("");
+    load();
+    return () => { requestId.current += 1; };
+  }, [load]);
 
   const counts = report?.counts_by_state || {};
   const tasks = report?.delivery_tasks || {};
@@ -55,17 +67,18 @@ export default function Today() {
             {report ? `Updated ${new Date(report.generated_at).toLocaleTimeString()}.` : "Your actionable work for the day."}
           </p>        </header>
 
-        <section style={panel}>
-          <label style={{ display: "block", maxWidth: 420 }}>
-            Tenant workspace
-            <input style={input} value={tenantId} onChange={(e) => setTenantId(e.target.value.trim())}
-              placeholder="Salon workspace UUID" />
-          </label>
-        </section>
+        {tenantId && <button type="button" className="button secondary" disabled={busy}
+          onClick={() => { setStale(Boolean(report)); load(); }}>{busy ? "Loading…" : "Refresh Today"}</button>}
+        {stale && report && <p role="status" style={{ ...muted, color: "#8c5a18" }}>
+          Showing a saved snapshot from {new Date(report.generated_at).toLocaleTimeString()}; refresh to retry.
+        </p>}
+        {busy && <p role="status" style={muted}>Loading the latest salon report…</p>}
+
+        
 
         {error && <p role="alert" style={{ ...panel, color: "#8c2626" }}>{error}</p>}
 
-        {!tenantId ? <p style={muted}>Enter your workspace id to load today.</p> : report && (
+        {!tenantId ? <p style={muted}>Select a salon from your account to continue.</p> : report && (
           <>
             <section style={panel}>
               <h2 style={{ fontSize: 17, margin: "0 0 6px" }}>Appointments</h2>
@@ -78,7 +91,7 @@ export default function Today() {
                     {report.appointments.map((appt) => (
                       <li key={appt.id}>
                         <strong>{appt.client_name}</strong> — {appt.service_name} with {appt.staff_id.slice(0, 8)}
-                        {" · "}{new Date(appt.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {" · "}{new Date(appt.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: appt.local_timezone })}
                         {" · "}{appt.status.replace(/_/g, " ")}
                       </li>
                     ))}
@@ -104,3 +117,5 @@ export default function Today() {
     </div>
   );
 }
+
+export const getServerSideProps=privatePage("staff");

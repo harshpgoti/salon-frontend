@@ -38,7 +38,8 @@ export default async function handler(req, res) {
     ...(req.headers.origin ? { origin: req.headers.origin } : {}),
   };
   let body;
-  const hasBody = req.body !== undefined && req.body !== null
+  const hasBody = req.method !== "GET" && req.method !== "HEAD"
+    && req.body !== undefined && req.body !== null
     && !(typeof req.body === "object" && !Array.isArray(req.body) && Object.keys(req.body).length === 0);
   if (hasBody) {
     headers["Content-Type"] = "application/json";

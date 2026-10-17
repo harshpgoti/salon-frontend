@@ -1,3 +1,5 @@
+import {useWorkspace} from "../components/Workspace";
+import {privatePage} from "../lib/session";
 import { useCallback, useEffect, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
@@ -17,11 +19,17 @@ function errorText(payload, fallback) {
 // Staff rebook from here; prompts and snooze arrive with TASK-037.
 export default function Retention() {
   const router = useRouter();
-  const [tenantId, setTenantId] = useState("");
+  const {tenantId, setTenantId} = useWorkspace();
   const [items, setItems] = useState([]);
   const [rules, setRules] = useState([]);
   const [preview, setPreview] = useState(null);
   const [segments, setSegments] = useState([]);
+  const [segmentName, setSegmentName] = useState("");
+  const [segmentField, setSegmentField] = useState("tag");
+  const [segmentValue, setSegmentValue] = useState("");
+  const [segmentChannel, setSegmentChannel] = useState("sms");
+  const [services, setServices] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [audience, setAudience] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [campaignNote, setCampaignNote] = useState("");
@@ -38,6 +46,12 @@ export default function Retention() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(errorText(body, "Due cycles could not be loaded."));
       setItems(body.items || []);
+      const [serviceResult, locationResult] = await Promise.all([
+        fetch(`/api/workspace?${new URLSearchParams({ tenant_id: tenantId, resource: "services" })}`, { credentials: "include" }).then(r => r.json()),
+        fetch(`/api/workspace?${new URLSearchParams({ tenant_id: tenantId, resource: "locations" })}`, { credentials: "include" }).then(r => r.json()),
+      ]);
+      setServices(serviceResult.items || []);
+      setLocations(locationResult.items || []);
       const rulesRes = await fetch(`/api/retention?${new URLSearchParams({ tenant_id: tenantId, resource: "rules" })}`,
         { credentials: "include" });
       const rulesBody = await rulesRes.json().catch(() => null);
@@ -69,19 +83,40 @@ export default function Retention() {
     }
   };
 
-  const showAudience = (segmentId) => async () => {
+  const showAudience = (segmentId, channel = segmentChannel) => async () => {
     setError("");
     try {
       const res = await fetch(`/api/audience?${new URLSearchParams({ tenant_id: tenantId, segment_id: segmentId })}`,
         { method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channel: "sms" }) });
+          body: JSON.stringify({ channel }) });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(errorText(body, "Audience could not be computed."));
       setAudience(body);
     } catch (err) {
       setError(err.message || "Audience could not be computed.");
     }
+  };
+
+  const createSegment = async (event) => {
+    event.preventDefault(); setError(""); setCampaignNote("");
+    let value = segmentValue.trim();
+    if (["min_spend_minor", "max_spend_minor", "inactive_days"].includes(segmentField)) {
+      if (!/^\d+$/.test(value)) { setError("Enter a whole number for this filter."); return; }
+      value = Number(value);
+    }
+    const definition = { [segmentField]: value };
+    try {
+      const res = await fetch(`/api/audience?${new URLSearchParams({ tenant_id: tenantId })}`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: segmentName.trim(), definition }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorText(body, "Segment could not be created."));
+      setSegmentName(""); setSegmentValue("");
+      await load();
+      await showAudience(body.id, segmentChannel)();
+    } catch (err) { setError(err.message || "Segment could not be created."); }
   };
 
   const campaignAction = (campaignId, action, payload) => async () => {
@@ -95,8 +130,10 @@ export default function Retention() {
       if (!res.ok) throw new Error(errorText(body, "That campaign action failed."));
       setCampaignNote(action === "approve"
         ? `Approved: ${body.eligible} eligible, budget locked.`
-        : action === "cancel" ? "Cancelled: future sends stopped."
-        : `Test recorded: ${body.communication_id}`);
+        : action === "pause" ? "Paused: pending sends will wait until resumed."
+          : action === "resume" ? "Resumed: approved sends will continue."
+            : action === "cancel" ? "Cancelled: future sends stopped."
+              : `Test recorded: ${body.communication_id}`);
       await load();
     } catch (err) {
       setError(err.message || "That campaign action failed.");
@@ -117,9 +154,6 @@ export default function Retention() {
   };
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => {
-    if (router.isReady && router.query.tenant) setTenantId(String(router.query.tenant));
-  }, [router.isReady, router.query.tenant]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ef", color: "#20231f", fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -131,17 +165,11 @@ export default function Retention() {
           <p style={muted}>Completed services open a due date from the service interval or the client override.</p>
         </header>
 
-        <section style={panel}>
-          <label style={{ display: "block", maxWidth: 420 }}>
-            Tenant workspace
-            <input style={input} value={tenantId} onChange={(e) => setTenantId(e.target.value.trim())}
-              placeholder="Salon workspace UUID" />
-          </label>
-        </section>
+        
 
         {error && <p role="alert" style={{ ...panel, color: "#8c2626" }}>{error}</p>}
 
-        {!tenantId ? <p style={muted}>Enter your workspace id to load due cycles.</p> : (
+        {!tenantId ? <p style={muted}>Select a salon from your account to continue.</p> : (
           <>
           <section style={panel}>
             {items.length === 0 && <p style={muted}>{busy ? "Loading…" : "Nothing due."}</p>}
@@ -186,13 +214,36 @@ export default function Retention() {
             <p style={{ ...muted, marginTop: 0 }}>
               Segments resolve to consenting, reachable clients only. Shared numbers never inflate the count.
             </p>
+            <form onSubmit={createSegment} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, alignItems: "end" }}>
+              <label style={muted}>Segment name<input aria-label="Segment name" required maxLength={120} value={segmentName} onChange={e => setSegmentName(e.target.value)} style={input} /></label>
+              <label style={muted}>Include clients matching<select aria-label="Audience filter" value={segmentField} onChange={e => { setSegmentField(e.target.value); setSegmentValue(""); }} style={input}>
+                <option value="tag">Client tag</option><option value="service">Completed service</option>
+                <option value="location">Preferred location</option><option value="min_spend_minor">Minimum recorded spend (cents)</option>
+                <option value="max_spend_minor">Maximum recorded spend (cents)</option><option value="inactive_days">No visit in this many days</option>
+              </select></label>
+              <label style={muted}>Filter value{segmentField === "service" ? (
+                <select aria-label="Filter value" required value={segmentValue} onChange={e => setSegmentValue(e.target.value)} style={input}>
+                  <option value="">Choose a service</option>{services.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              ) : segmentField === "location" ? (
+                <select aria-label="Filter value" required value={segmentValue} onChange={e => setSegmentValue(e.target.value)} style={input}>
+                  <option value="">Choose a location</option>{locations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              ) : <input aria-label="Filter value" required type={["min_spend_minor", "max_spend_minor", "inactive_days"].includes(segmentField) ? "number" : "text"}
+                min={segmentField === "inactive_days" ? 1 : 0} max={segmentField === "inactive_days" ? 3650 : undefined}
+                value={segmentValue} onChange={e => setSegmentValue(e.target.value)} style={input} />}</label>
+              <label style={muted}>Preview channel<select aria-label="Preview channel" value={segmentChannel} onChange={e => setSegmentChannel(e.target.value)} style={input}>
+                <option value="sms">SMS</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option>
+              </select></label>
+              <button type="submit" style={button} disabled={busy || !tenantId}>Create and preview</button>
+            </form>
             {segments.length === 0 && <p style={muted}>No segments yet.</p>}
             <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 10 }}>
               {segments.map((segment) => (
                 <li key={segment.id}>
                   <strong>{segment.name}</strong>{" "}
-                  <button type="button" style={button} disabled={busy} onClick={showAudience(segment.id)}>
-                    Preview audience
+                  <button type="button" style={button} disabled={busy} onClick={showAudience(segment.id, segmentChannel)}>
+                    Preview {segmentChannel.toUpperCase()} audience
                   </button>
                 </li>
               ))}
@@ -211,19 +262,27 @@ export default function Retention() {
           <section style={panel}>
             <h2 style={{ fontSize: 17, margin: "0 0 4px" }}>Offer campaigns</h2>
             <p style={{ ...muted, marginTop: 0 }}>
-              Draft, approve, test and cancel. Approval locks the audience, budget and schedule; sends stop at the budget.
+              Approval locks the audience, content, budget and schedule. Pause or cancel stops pending sends; opt-outs and budgets are checked again at send time.
             </p>
             {campaignNote && <p role="status" style={{ color: "#2c3f31" }}>{campaignNote}</p>}
             {campaigns.length === 0 && <p style={muted}>No campaigns yet.</p>}
             <ul style={{ margin: "12px 0", paddingLeft: 20, display: "grid", gap: 10 }}>
               {campaigns.map((campaign) => (
                 <li key={campaign.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <span><strong>{campaign.name}</strong> — {campaign.channel} · {campaign.status} · sent {campaign.sent}, skipped {campaign.skipped}</span>
+                  <span><strong>{campaign.name}</strong> — {campaign.channel} · {campaign.status} · sent {campaign.sent}, pending {campaign.pending}, skipped {campaign.skipped}</span>
                   <span style={{ display: "flex", gap: 8 }}>
                     {campaign.status === "draft" && (
                       <button type="button" style={button} disabled={busy} onClick={campaignAction(campaign.id, "approve")}>Approve</button>
                     )}
-                    {(campaign.status === "scheduled" || campaign.status === "sending") && (
+                    {(campaign.status === "scheduled" || campaign.status === "sending"
+                      || (["completed", "partial"].includes(campaign.status) && campaign.pending > 0)) && (
+                      <button type="button" style={button} disabled={busy} onClick={campaignAction(campaign.id, "pause")}>Pause</button>
+                    )}
+                    {campaign.status === "paused" && (
+                      <button type="button" style={button} disabled={busy} onClick={campaignAction(campaign.id, "resume")}>Resume</button>
+                    )}
+                    {(["scheduled", "sending", "paused"].includes(campaign.status)
+                      || (["completed", "partial"].includes(campaign.status) && campaign.pending > 0)) && (
                       <button type="button" style={{ ...button, background: "#8c2626" }} disabled={busy} onClick={campaignAction(campaign.id, "cancel")}>Cancel</button>
                     )}
                     <button type="button" style={button} disabled={busy} onClick={showReport(campaign.id)}>Report</button>
@@ -245,3 +304,5 @@ export default function Retention() {
     </div>
   );
 }
+
+export const getServerSideProps=privatePage("staff");

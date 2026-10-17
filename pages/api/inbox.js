@@ -20,6 +20,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ detail: { code: "invalid_tenant_id" } });
   }
   const taskId = req.query.task_id ? String(req.query.task_id) : null;
+  const action = req.query.action ? String(req.query.action) : "resolve";
+  if (!["resolve", "reply"].includes(action)) {
+    return res.status(400).json({ detail: { code: "invalid_action" } });
+  }
   if (taskId && !UUID.test(taskId)) {
     return res.status(400).json({ detail: { code: "invalid_task_id" } });
   }
@@ -41,9 +45,11 @@ export default async function handler(req, res) {
     "X-Request-ID": requestId,
     ...(cookies ? { cookie: cookies } : {}),
     ...(req.headers.origin ? { origin: req.headers.origin } : {}),
+    ...(req.headers["idempotency-key"] ? { "Idempotency-Key": req.headers["idempotency-key"] } : {}),
   };
   let body;
-  const hasBody = req.body !== undefined && req.body !== null
+  const hasBody = req.method !== "GET" && req.method !== "HEAD"
+    && req.body !== undefined && req.body !== null
     && !(typeof req.body === "object" && !Array.isArray(req.body) && Object.keys(req.body).length === 0);
   if (hasBody) {
     headers["Content-Type"] = "application/json";
@@ -51,7 +57,7 @@ export default async function handler(req, res) {
   }
 
   const upstreamPath = taskId
-    ? `/v1/tenants/${tenantId}/inbox/${taskId}/resolve`
+    ? `/v1/tenants/${tenantId}/inbox/${taskId}/${action}`
     : `/v1/tenants/${tenantId}/inbox?status=${encodeURIComponent(status)}`;
 
   let response;
