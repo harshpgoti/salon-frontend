@@ -1,0 +1,82 @@
+# CI copy of the workspace demo stack (H:/salon/docker-compose.demo.yml).
+# Kept here because the workspace root is outside both repositories; update both
+# when the demo topology changes. Paths are relative to this file's directory:
+# CI checkouts the pinned salon-backend repo next to this frontend repo.
+services:
+  demo-postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: salon_demo
+      POSTGRES_USER: salon
+      POSTGRES_PASSWORD: local-dev-only
+    ports: ["127.0.0.1:5435:5432"]
+    volumes:
+      - salon-demo-postgres:/var/lib/postgresql/data
+      - ../../backend/db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U salon -d salon_demo"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  backend:
+    build:
+      context: ../../backend
+    image: salon-backend:demo
+    container_name: salon-backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://salon_app:local-dev-only@demo-postgres:5432/salon_demo
+      API_BASE_URL: http://127.0.0.1:8000
+      WEB_BASE_URL: http://127.0.0.1:3000
+      SESSION_COOKIE_SECURE: 'false'
+      APP_ENV: demo
+      DEMO_AUTH_ENABLED: 'true'
+      STAFF_OIDC_PASSWORD_RESET_URL: ${STAFF_OIDC_PASSWORD_RESET_URL:-}
+      COMPANY_OIDC_PASSWORD_RESET_URL: ${COMPANY_OIDC_PASSWORD_RESET_URL:-}
+    ports: ['127.0.0.1:8000:8000']
+    depends_on:
+      demo-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+  frontend:
+    build:
+      context: ..
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+    image: salon-frontend:demo
+    container_name: salon-frontend
+    environment:
+      API_BASE_URL: http://backend:8000
+      DEMO_AUTH_ENABLED: 'true'
+    ports: ['127.0.0.1:3000:3000']
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'fetch("http://127.0.0.1:3000").then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  communications-worker:
+    build:
+      context: ../../backend
+    image: salon-backend:demo
+    container_name: salon-communications-worker
+    command: ['python', '-m', 'modules.worker.communications']
+    environment:
+      DATABASE_URL: postgresql+psycopg://salon_app:local-dev-only@demo-postgres:5432/salon_demo
+      APP_ENV: demo
+      WEB_BASE_URL: http://127.0.0.1:3000
+    depends_on:
+      demo-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  salon-demo-postgres:
