@@ -82,7 +82,7 @@ test('platform admin signs in and stays on the admin surface', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Admin sign in' })).toBeVisible();
   await expectNoSeriousViolations(page, '/admin/login');
   await signIn(page, 'company');
-  await expect(page.getByText('PLATFORM ADMIN')).toBeVisible();
+  await expect(page.getByText('PLATFORM ADMIN', { exact: true })).toBeVisible();
 
   await page.goto('/salon');
   await page.waitForURL(/\/login(\?|$)/);

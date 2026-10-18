@@ -31,7 +31,7 @@ jobs:
       - name: Check out the pinned backend for the demo stack
         run: |
           git clone --filter=blob:none https://github.com/harshpgoti/salon-backend.git ../backend
-          git -C ../backend checkout 23f5556d0e84c62b5a6ec64f05ea1fca5efda00e
+          git -C ../backend checkout 558ca1e220b9a1d6f5cf756179658c2e955bf088
       - name: Start the demo stack
         run: docker compose -f ci/docker-compose.demo.yml up --build -d
       - name: Wait for backend and frontend health
