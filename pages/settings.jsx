@@ -8,6 +8,7 @@ const panel = { background: "#ffffff", border: "1px solid #e8e6df", borderRadius
 const muted = { color: "#747970", fontSize: 13 };
 const input = { display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, padding: 10, border: "1px solid #c9c6bd", borderRadius: 7 };
 const button = { padding: "10px 16px", background: "#334b39", color: "#fff", border: 0, borderRadius: 8, cursor: "pointer" };
+const ghostButton = { ...button, background: "#e8eee4", color: "#2c3f31" };
 const STEP_LABEL = {
   business_identity: "Business identity", location: "Location, time zone and currency",
   hours: "Opening hours", service: "Services", qualified_staff: "Qualified staff",

@@ -7,6 +7,7 @@ import { useRouter } from "next/router";
 const panel = { background: "#ffffff", border: "1px solid #e8e6df", borderRadius: 14, padding: 20, marginBottom: 18 };
 const muted = { color: "#747970", fontSize: 13 };
 const input = { display: "block", width: "100%", boxSizing: "border-box", marginTop: 6, padding: 10, border: "1px solid #c9c6bd", borderRadius: 7 };
+const button = { padding: "10px 16px", background: "#334b39", color: "#fff", border: 0, borderRadius: 8, cursor: "pointer" };
 
 function errorText(payload, fallback) {
   const detail = payload?.detail;
