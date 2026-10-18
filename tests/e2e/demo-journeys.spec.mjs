@@ -96,13 +96,21 @@ test('guided setup opens bookings; public page passes axe with a mobile layout',
 
   // Complete the owner-declared steps the demo seed leaves pending. The public
   // page refuses bookings until hours, services and the booking link are done.
+  // The checklist only exists after the client-side load, so wait for it first:
+  // locator.count() does not auto-wait and would otherwise read an empty checklist.
+  const markButtons = page.getByRole('button', { name: 'Mark as done' });
+  const accepting = page.getByText(/open and accepting bookings/i);
+  await expect(markButtons.first().or(accepting)).toBeVisible();
   for (let clicks = 0; clicks < 6; clicks += 1) {
-    const mark = page.getByRole('button', { name: 'Mark as done' }).first();
-    if (await mark.count() === 0) break;
-    await mark.click();
+    if (await accepting.isVisible() || await markButtons.count() === 0) break;
+    const before = await markButtons.count();
+    await markButtons.first().click();
     await expect(page.getByRole('status').filter({ hasText: /marked as done/i })).toBeVisible();
+    // Each save reloads the checklist; wait for the clicked row to flip to Done so
+    // the next iteration cannot re-click a button that is about to be removed.
+    await expect.poll(() => markButtons.count()).toBeLessThan(before);
   }
-  await expect(page.getByText(/open and accepting bookings/i)).toBeVisible();
+  await expect(accepting).toBeVisible();
   await expectNoSeriousViolations(page, '/settings');
 
   const preview = page.getByRole('link', { name: /Preview public booking page/ });
