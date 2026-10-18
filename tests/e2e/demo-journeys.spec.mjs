@@ -96,19 +96,18 @@ test('guided setup opens bookings; public page passes axe with a mobile layout',
 
   // Complete the owner-declared steps the demo seed leaves pending. The public
   // page refuses bookings until hours, services and the booking link are done.
-  // The checklist only exists after the client-side load, so wait for it first:
-  // locator.count() does not auto-wait and would otherwise read an empty checklist.
+  // Two live-UI details drive this loop: the checklist only exists after the
+  // client-side load, and every row button renames from "Mark as done" to
+  // "Working…" while a save plus reload is in flight. Both mean a bare count()
+  // can read zero mid-flight, so wait for the page to be idle before each read.
   const markButtons = page.getByRole('button', { name: 'Mark as done' });
   const accepting = page.getByText(/open and accepting bookings/i);
   await expect(markButtons.first().or(accepting)).toBeVisible();
   for (let clicks = 0; clicks < 6; clicks += 1) {
+    await expect(page.getByRole('button', { name: 'Working' })).toHaveCount(0);
     if (await accepting.isVisible() || await markButtons.count() === 0) break;
-    const before = await markButtons.count();
     await markButtons.first().click();
     await expect(page.getByRole('status').filter({ hasText: /marked as done/i })).toBeVisible();
-    // Each save reloads the checklist; wait for the clicked row to flip to Done so
-    // the next iteration cannot re-click a button that is about to be removed.
-    await expect.poll(() => markButtons.count()).toBeLessThan(before);
   }
   await expect(accepting).toBeVisible();
   await expectNoSeriousViolations(page, '/settings');
