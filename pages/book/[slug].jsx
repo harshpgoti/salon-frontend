@@ -355,8 +355,8 @@ export default function PublicSalonPage({ state, salon, slug, attributionToken =
         .hours-zone { margin-top: 0; color: #555b55; }
         .hours-period ul { columns: 2; }
         .readiness { margin-top: 30px; padding-top: 20px; border-top: 1px solid #e7e5e0; }
-        form { display: grid; gap: 10px; }
-        select, input, button { min-height: 44px; padding: 10px 12px; border: 1px solid #b9bcb6; border-radius: 8px; font: inherit; }
+        form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+        select, input, button { min-height: 44px; min-width: 0; padding: 10px 12px; border: 1px solid #b9bcb6; border-radius: 8px; font: inherit; }
         button { margin-top: 8px; color: white; background: var(--salon-primary); border: 0; font-weight: 700; cursor: pointer; }
         button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--salon-accent); outline-offset: 2px; }
         .slot-results { margin-top: 24px; padding-top: 18px; border-top: 1px solid #e7e5e0; }
